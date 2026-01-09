@@ -1,0 +1,196 @@
+{
+  "name": "Emailsummarized",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "750fc3c3-e8a5-4075-9b3e-01e3f63f3960",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "FPYdKmol8s2EeIj8",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function findPart(part, mime) {\n  if (!part) return null;\n  if (part.mimeType === mime && part.body?.data) return part;\n  for (const p of (part.parts || [])) {\n    const found = findPart(p, mime);\n    if (found) return found;\n  }\n  return null;\n}\n\nconst root = $json.payload;\n\n// try text/plain first, then text/html\nconst plain = findPart(root, 'text/plain');\nconst html = findPart(root, 'text/html');\n\nconst chosen = plain || html;\n\nif (!chosen?.body?.data) {\n  return [{ ...$json, decodedBody: $json.snippet || \"\" }];\n}\n\n// Gmail uses base64url sometimes (- and _)\nconst b64 = chosen.body.data.replace(/-/g, '+').replace(/_/g, '/');\nconst decoded = Buffer.from(b64, 'base64').toString('utf8');\n\nreturn [{\n  ...$json,\n  decodedBody: decoded,\n  bodyMimeType: chosen.mimeType\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        0
+      ],
+      "id": "3098d8da-3c66-4828-b75e-9d93d4ef6af7",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e0ce9ab9-2d82-4c29-8840-7bdcea69b48f",
+              "name": "chatInput",
+              "value": "=From: {{$json.From}} Subject: {{$json.Subject}} Date: {{$json.internalDate}}  Body: {{$json.decodedBody}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        624,
+        0
+      ],
+      "id": "2c6b42cd-984f-4386-82e5-6b9512394789",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Summarize this email in 3 bullet points.\nThen list action items (if any).\n\n{{$json.chatInput}}\n",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        832,
+        0
+      ],
+      "id": "f243edae-220c-4a95-a019-013ea26fb9dc",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "deepseek/deepseek-r1-0528:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        832,
+        160
+      ],
+      "id": "f0fa3ac7-471b-40b7-ac54-8e20b22015c2",
+      "name": "OpenRouter Chat Model",
+      "notesInFlow": true,
+      "credentials": {
+        "openRouterApi": {
+          "id": "JvVcMJOOOjWGqwBh",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "amarmindspirit@gmail.com",
+        "subject": "=Summary: {{$node[\"Gmail Trigger\"].json.Subject}}\n",
+        "message": "=From: {{$node[\"Gmail Trigger\"].json.From}}\nSubject: {{$node[\"Gmail Trigger\"].json.Subject}}\n\n{{$node[\"Basic LLM Chain\"].json.text}}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1168,
+        0
+      ],
+      "id": "974fb33a-847f-4dbd-8c2c-3b83af141617",
+      "name": "Send a message",
+      "webhookId": "ecd3fc03-b9d9-4e5f-b859-05c6c3628024",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "FPYdKmol8s2EeIj8",
+          "name": "Gmail account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "e35e2d5d-d768-4f9b-b100-1e49a3e51b95",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "61b745a0ae4909922dfc79ce2d778ba5cb19337d6a223e2db9d053634c583e17"
+  },
+  "id": "nk5gOVrfo8MxO28U-BrTp",
+  "tags": []
+}
